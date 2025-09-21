@@ -10,7 +10,7 @@ import os
 import numpy as np
 
 if __name__ == "__main__":
-    
+
     HERE = pathlib.Path(__file__).parent
 
     parser = argparse.ArgumentParser()
@@ -20,13 +20,13 @@ if __name__ == "__main__":
         required=True,
         type=str,
     )
-    
+
     parser.add_argument(
         "--robot",
         choices=["unitree_g1", "unitree_g1_with_hands", "booster_t1", "stanford_toddy", "fourier_n1", "engineai_pm01"],
         default="unitree_g1",
     )
-        
+
     parser.add_argument(
         "--record_video",
         action="store_true",
@@ -50,10 +50,8 @@ if __name__ == "__main__":
         default=None,
         help="Path to save the robot motion.",
     )
-    
-    
+
     args = parser.parse_args()
-    
 
     if args.save_path is not None:
         save_dir = os.path.dirname(args.save_path)
@@ -61,11 +59,9 @@ if __name__ == "__main__":
             os.makedirs(save_dir, exist_ok=True)
         qpos_list = []
 
-    
     # Load SMPLX trajectory
     lafan1_data_frames, actual_human_height = load_lafan1_file(args.bvh_file)
-    
-    
+
     # Initialize the retargeting system
     retargeter = GMR(
         src_human="bvh",
@@ -74,7 +70,7 @@ if __name__ == "__main__":
     )
 
     motion_fps = 30
-    
+
     robot_motion_viewer = RobotMotionViewer(robot_type=args.robot,
                                             motion_fps=motion_fps,
                                             transparent_robot=0,
@@ -83,22 +79,22 @@ if __name__ == "__main__":
                                             # video_width=2080,
                                             # video_height=1170
                                             )
-    
+
     # FPS measurement variables
     fps_counter = 0
     fps_start_time = time.time()
     fps_display_interval = 2.0  # Display FPS every 2 seconds
-    
+
     print(f"mocap_frame_rate: {motion_fps}")
-    
+
     # Create tqdm progress bar for the total number of frames
     pbar = tqdm(total=len(lafan1_data_frames), desc="Retargeting")
-    
+
     # Start the viewer
     i = 0
 
     while i < len(lafan1_data_frames):
-        
+
         # FPS measurement
         fps_counter += 1
         current_time = time.time()
@@ -107,7 +103,7 @@ if __name__ == "__main__":
             print(f"Actual rendering FPS: {actual_fps:.2f}")
             fps_counter = 0
             fps_start_time = current_time
-            
+
         # Update progress bar
         pbar.update(1)
 
@@ -131,16 +127,17 @@ if __name__ == "__main__":
 
         if args.save_path is not None:
             qpos_list.append(qpos)
-    
+
     if args.save_path is not None:
         import pickle
+
         root_pos = np.array([qpos[:3] for qpos in qpos_list])
         # save from wxyz to xyzw
-        root_rot = np.array([qpos[3:7][[1,2,3,0]] for qpos in qpos_list])
+        root_rot = np.array([qpos[3:7][[1, 2, 3, 0]] for qpos in qpos_list])
         dof_pos = np.array([qpos[7:] for qpos in qpos_list])
         local_body_pos = None
         body_names = None
-        
+
         motion_data = {
             "fps": motion_fps,
             "root_pos": root_pos,
@@ -155,6 +152,5 @@ if __name__ == "__main__":
 
     # Close progress bar
     pbar.close()
-    
+
     robot_motion_viewer.close()
-       
