@@ -13,7 +13,11 @@ def load_smpl_file(smpl_file):
     return smpl_data
 
 
-def load_smplx_file(smplx_file, smplx_body_model_path):
+def load_smplx_file(
+        smplx_file,
+        smplx_body_model_path,
+        betas_dim=16,
+):
     smplx_data = np.load(smplx_file, allow_pickle=True)
     body_model = smplx.create(
         smplx_body_model_path,
@@ -27,8 +31,17 @@ def load_smplx_file(smplx_file, smplx_body_model_path):
     # print(smplx_data["trans"].shape)
 
     num_frames = smplx_data["pose_body"].shape[0]
+
+    # FIXME:
+    #  Jason 2025-10-16
+    #  Create betas with correct shape - SMPLX typically uses 10 betas, not 16
+    #  1. Using GMR python script, need to modify GMR to accept 16 betas, not know why
+    #  2. Using GMR from outside, need to modify GMR to accept 10 betas, not know why
+    betas_tensor = torch.tensor(smplx_data["betas"][:betas_dim]).float().view(1, -1)  # Use only first 16 betas
+    # betas_tensor = torch.tensor(smplx_data["betas"][:10]).float().view(1, -1)  # Use only first 10 betas
+
     smplx_output = body_model(
-        betas=torch.tensor(smplx_data["betas"]).float().view(1, -1),  # (16,)
+        betas=betas_tensor.repeat(num_frames, 1),  # (N, 1)
         global_orient=torch.tensor(smplx_data["root_orient"]).float(),  # (N, 3)
         body_pose=torch.tensor(smplx_data["pose_body"]).float(),  # (N, 63)
         transl=torch.tensor(smplx_data["trans"]).float(),  # (N, 3)
@@ -37,7 +50,10 @@ def load_smplx_file(smplx_file, smplx_body_model_path):
         jaw_pose=torch.zeros(num_frames, 3).float(),
         leye_pose=torch.zeros(num_frames, 3).float(),
         reye_pose=torch.zeros(num_frames, 3).float(),
-        # expression=torch.zeros(num_frames, 10).float(),
+        # TODO:
+        #  Jason 2025-10-16
+        #  Match batch size to 10 betas
+        expression=torch.zeros(num_frames, 10).float(),
         return_full_pose=True,
     )
 
