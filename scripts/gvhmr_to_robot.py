@@ -64,14 +64,25 @@ if __name__ == "__main__":
 
     SMPLX_FOLDER = HERE / ".." / "assets" / "body_models"
 
+    print(
+        f"gvhmr_pred_file = {args.gvhmr_pred_file}\n"
+        f"smplx_body_model_path = {SMPLX_FOLDER}\n"
+    )
+
     # Load SMPLX trajectory
     smplx_data, body_model, smplx_output, actual_human_height = load_gvhmr_pred_file(
-        args.gvhmr_pred_file, SMPLX_FOLDER
+        gvhmr_pred_file=args.gvhmr_pred_file,
+        smplx_body_model_path=SMPLX_FOLDER,
+        betas_dim=16,
     )
 
     # align fps
     tgt_fps = 30
-    smplx_data_frames, aligned_fps = get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=tgt_fps)
+    smplx_data_frames, aligned_fps = get_gvhmr_data_offline_fast(
+        smplx_data=smplx_data,
+        body_model=body_model,
+        smplx_output=smplx_output,
+        tgt_fps=tgt_fps)
 
     # Initialize the retargeting system
     retarget = GMR(
