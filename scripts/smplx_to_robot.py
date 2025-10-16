@@ -68,14 +68,27 @@ if __name__ == "__main__":
 
     SMPLX_FOLDER = HERE / ".." / "assets" / "body_models"
 
+    print(
+        f"gvhmr_pred_file = {args.gvhmr_pred_file}\n"
+        f"smplx_body_model_path = {SMPLX_FOLDER}\n"
+    )
+
     # Load SMPLX trajectory
     smplx_data, body_model, smplx_output, actual_human_height = load_smplx_file(
-        args.smplx_file, SMPLX_FOLDER
+        smplx_file=args.smplx_file,
+        smplx_body_model_path=SMPLX_FOLDER,
+        betas_dim=16,
     )
 
     # align fps
-    tgt_fps = 30
-    smplx_data_frames, aligned_fps = get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=tgt_fps)
+    tgt_fps = 50  # Target FPS for alignment
+
+    smplx_data_frames, aligned_fps = get_smplx_data_offline_fast(
+        smplx_data=smplx_data,
+        body_model=body_model,
+        smplx_output=smplx_output,
+        tgt_fps=tgt_fps,
+    )
 
     # Initialize the retargeting system
     retarget = GMR(
@@ -84,13 +97,16 @@ if __name__ == "__main__":
         tgt_robot=args.robot,
     )
 
-    robot_motion_viewer = RobotMotionViewer(robot_type=args.robot,
-                                            motion_fps=aligned_fps,
-                                            transparent_robot=0,
-                                            record_video=args.record_video,
-                                            video_path=f"videos/{args.robot}_{args.smplx_file.split('/')[-1].split('.')[0]}.mp4", )
+    robot_motion_viewer = RobotMotionViewer(
+        robot_type=args.robot,
+        motion_fps=aligned_fps,
+        transparent_robot=0,
+        record_video=args.record_video,
+        video_path=f"videos/{args.robot}_{args.smplx_file.split('/')[-1].split('.')[0]}.mp4",
+    )
 
     curr_frame = 0
+
     # FPS measurement variables
     fps_counter = 0
     fps_start_time = time.time()

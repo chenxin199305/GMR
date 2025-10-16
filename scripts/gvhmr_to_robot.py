@@ -77,12 +77,14 @@ if __name__ == "__main__":
     )
 
     # align fps
-    tgt_fps = 30
+    tgt_fps = 50  # Target FPS for alignment
+
     smplx_data_frames, aligned_fps = get_gvhmr_data_offline_fast(
         smplx_data=smplx_data,
         body_model=body_model,
         smplx_output=smplx_output,
-        tgt_fps=tgt_fps)
+        tgt_fps=tgt_fps,
+    )
 
     # Initialize the retargeting system
     retarget = GMR(
@@ -91,13 +93,16 @@ if __name__ == "__main__":
         tgt_robot=args.robot,
     )
 
-    robot_motion_viewer = RobotMotionViewer(robot_type=args.robot,
-                                            motion_fps=aligned_fps,
-                                            transparent_robot=0,
-                                            record_video=args.record_video,
-                                            video_path=f"videos/{args.robot}_{args.gvhmr_pred_file.split('/')[-1].split('.')[0]}.mp4", )
+    robot_motion_viewer = RobotMotionViewer(
+        robot_type=args.robot,
+        motion_fps=aligned_fps,
+        transparent_robot=0,
+        record_video=args.record_video,
+        video_path=f"videos/{args.robot}_{args.gvhmr_pred_file.split('/')[-1].split('.')[0]}.mp4",
+    )
 
     curr_frame = 0
+
     # FPS measurement variables
     fps_counter = 0
     fps_start_time = time.time()
