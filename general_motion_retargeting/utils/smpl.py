@@ -1,9 +1,11 @@
 import numpy as np
-import smplx
 import torch
-from scipy.spatial.transform import Rotation as R
+import smplx
+
+from scipy.spatial.transform import Rotation as R, Slerp
+from scipy.interpolate import interp1d, CubicSpline
+
 from smplx.joint_names import JOINT_NAMES
-from scipy.interpolate import interp1d
 
 import general_motion_retargeting.utils.lafan_vendor.utils as utils
 
@@ -211,6 +213,196 @@ def slerp(rot1, rot2, t):
     return R.from_quat(q)
 
 
+# def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
+#     """
+#     Must return a dictionary with the following structure:
+#     {
+#         "Hips": (position, orientation),
+#         "Spine": (position, orientation),
+#         ...
+#     }
+#     """
+#     src_fps = smplx_data["mocap_frame_rate"].item()
+#     frame_skip = int(src_fps / tgt_fps)
+#     num_frames = smplx_data["pose_body"].shape[0]
+#     global_orient = smplx_output.global_orient.squeeze()
+#     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
+#     joints = smplx_output.joints.detach().numpy().squeeze()
+#     joint_names = JOINT_NAMES[: len(body_model.parents)]
+#     parents = body_model.parents
+#
+#     if tgt_fps < src_fps:
+#         # perform fps alignment with proper interpolation
+#         new_num_frames = num_frames // frame_skip
+#
+#         # Create time points for interpolation
+#         original_time = np.arange(stop=num_frames)
+#         target_time = np.linspace(start=0, stop=num_frames - 1, num=new_num_frames)
+#
+#         # Interpolate global orientation using SLERP
+#         global_orient_interp = []
+#         for i in range(len(target_time)):
+#             t = target_time[i]
+#             idx1 = int(np.floor(t))
+#             idx2 = min(idx1 + 1, num_frames - 1)
+#             alpha = t - idx1
+#
+#             rot1 = R.from_rotvec(global_orient[idx1])
+#             rot2 = R.from_rotvec(global_orient[idx2])
+#             interp_rot = slerp(rot1, rot2, alpha)
+#             global_orient_interp.append(interp_rot.as_rotvec())
+#         global_orient = np.stack(global_orient_interp, axis=0)
+#
+#         # Interpolate full body pose using SLERP
+#         full_body_pose_interp = []
+#         for i in range(full_body_pose.shape[1]):  # For each joint
+#             joint_rots = []
+#             for j in range(len(target_time)):
+#                 t = target_time[j]
+#                 idx1 = int(np.floor(t))
+#                 idx2 = min(idx1 + 1, num_frames - 1)
+#                 alpha = t - idx1
+#
+#                 rot1 = R.from_rotvec(full_body_pose[idx1, i])
+#                 rot2 = R.from_rotvec(full_body_pose[idx2, i])
+#                 interp_rot = slerp(rot1, rot2, alpha)
+#                 joint_rots.append(interp_rot.as_rotvec())
+#             full_body_pose_interp.append(np.stack(joint_rots, axis=0))
+#         full_body_pose = np.stack(full_body_pose_interp, axis=1)
+#
+#         # Interpolate joint positions using linear interpolation
+#         joints_interp = []
+#         for i in range(joints.shape[1]):  # For each joint
+#             for j in range(3):  # For each coordinate
+#                 interp_func = interp1d(original_time, joints[:, i, j], kind='linear')
+#                 joints_interp.append(interp_func(target_time))
+#         joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
+#
+#         aligned_fps = len(global_orient) / num_frames * src_fps
+#     else:
+#         aligned_fps = tgt_fps
+#
+#     smplx_data_frames = []
+#     for curr_frame in range(len(global_orient)):
+#         result = {}
+#         single_global_orient = global_orient[curr_frame]
+#         single_full_body_pose = full_body_pose[curr_frame]
+#         single_joints = joints[curr_frame]
+#         joint_orientations = []
+#         for i, joint_name in enumerate(joint_names):
+#             if i == 0:
+#                 rot = R.from_rotvec(single_global_orient)
+#             else:
+#                 rot = joint_orientations[parents[i]] * R.from_rotvec(
+#                     single_full_body_pose[i].squeeze()
+#                 )
+#             joint_orientations.append(rot)
+#             result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
+#
+#         smplx_data_frames.append(result)
+#
+#     return smplx_data_frames, aligned_fps
+
+
+# def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
+#     """
+#     Must return a dictionary with the following structure:
+#     {
+#         "Hips": (position, orientation),
+#         "Spine": (position, orientation),
+#         ...
+#     }
+#     """
+#     src_fps = smplx_data["mocap_frame_rate"].item()
+#     frame_skip = int(src_fps / tgt_fps)
+#     num_frames = smplx_data["pose_body"].shape[0]
+#     global_orient = smplx_output.global_orient.squeeze()
+#     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
+#     joints = smplx_output.joints.detach().numpy().squeeze()
+#     joint_names = JOINT_NAMES[: len(body_model.parents)]
+#     parents = body_model.parents
+#
+#     if tgt_fps < src_fps:
+#         # perform fps alignment with proper interpolation
+#         new_num_frames = num_frames // frame_skip
+#
+#         # Create time points for interpolation
+#         original_time = np.arange(stop=num_frames)
+#         target_time = np.linspace(start=0, stop=num_frames - 1, num=new_num_frames)
+#
+#         # Interpolate global orientation using SLERP
+#         global_orient_interp = []
+#         for i in range(len(target_time)):
+#             t = target_time[i]
+#             idx1 = int(np.floor(t))
+#             idx2 = min(idx1 + 1, num_frames - 1)
+#             alpha = t - idx1
+#
+#             rot1 = R.from_rotvec(global_orient[idx1])
+#             rot2 = R.from_rotvec(global_orient[idx2])
+#             interp_rot = slerp(rot1, rot2, alpha)
+#             global_orient_interp.append(interp_rot.as_rotvec())
+#         global_orient = np.stack(global_orient_interp, axis=0)
+#
+#         # Interpolate full body pose using SLERP
+#         full_body_pose_interp = []
+#         for i in range(full_body_pose.shape[1]):  # For each joint
+#             joint_rots = []
+#             for j in range(len(target_time)):
+#                 t = target_time[j]
+#                 idx1 = int(np.floor(t))
+#                 idx2 = min(idx1 + 1, num_frames - 1)
+#                 alpha = t - idx1
+#
+#                 rot1 = R.from_rotvec(full_body_pose[idx1, i])
+#                 rot2 = R.from_rotvec(full_body_pose[idx2, i])
+#                 interp_rot = slerp(rot1, rot2, alpha)
+#                 joint_rots.append(interp_rot.as_rotvec())
+#             full_body_pose_interp.append(np.stack(joint_rots, axis=0))
+#         full_body_pose = np.stack(full_body_pose_interp, axis=1)
+#
+#         # Interpolate joint positions using linear interpolation
+#         joints_interp = []
+#         for i in range(joints.shape[1]):  # For each joint
+#             for j in range(3):  # For each coordinate
+#                 interp_func = interp1d(original_time, joints[:, i, j], kind='linear')
+#                 joints_interp.append(interp_func(target_time))
+#         joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
+#
+#         aligned_fps = len(global_orient) / num_frames * src_fps
+#     else:
+#         aligned_fps = tgt_fps
+#
+#     smplx_data_frames = []
+#     for curr_frame in range(len(global_orient)):
+#         result = {}
+#         single_global_orient = global_orient[curr_frame]
+#         single_full_body_pose = full_body_pose[curr_frame]
+#         single_joints = joints[curr_frame]
+#         joint_orientations = []
+#         for i, joint_name in enumerate(joint_names):
+#             if i == 0:
+#                 rot = R.from_rotvec(single_global_orient)
+#             else:
+#                 rot = joint_orientations[parents[i]] * R.from_rotvec(
+#                     single_full_body_pose[i].squeeze()
+#                 )
+#             joint_orientations.append(rot)
+#             result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
+#
+#         smplx_data_frames.append(result)
+#
+#     # add correct rotations
+#     rotation_matrix = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
+#     rotation_quat = R.from_matrix(rotation_matrix).as_quat(scalar_first=True)
+#     for result in smplx_data_frames:
+#         for joint_name in result.keys():
+#             orientation = utils.quat_mul(rotation_quat, result[joint_name][1])
+#             position = result[joint_name][0] @ rotation_matrix.T
+#             result[joint_name] = (position, orientation)
+#
+#     return smplx_data_frames, aligned_fps
+
 def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
     """
     Must return a dictionary with the following structure:
@@ -221,65 +413,68 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     }
     """
     src_fps = smplx_data["mocap_frame_rate"].item()
-    frame_skip = int(src_fps / tgt_fps)
     num_frames = smplx_data["pose_body"].shape[0]
+
     global_orient = smplx_output.global_orient.squeeze()
     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
     joints = smplx_output.joints.detach().numpy().squeeze()
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
 
-    if tgt_fps < src_fps:
-        # perform fps alignment with proper interpolation
-        new_num_frames = num_frames // frame_skip
+    # 统一用时间轴（秒）来插值
+    duration_seconds = num_frames / src_fps
+    new_num_frames = int(round(duration_seconds * tgt_fps))
 
-        # Create time points for interpolation
-        original_time = np.arange(num_frames)
-        target_time = np.linspace(0, num_frames - 1, new_num_frames)
+    # 原始与目标时间点
+    original_times = np.arange(num_frames) / src_fps
+    target_times = np.arange(new_num_frames) / tgt_fps
 
-        # Interpolate global orientation using SLERP
-        global_orient_interp = []
-        for i in range(len(target_time)):
-            t = target_time[i]
-            idx1 = int(np.floor(t))
+    # --- 确保 target_times 在原始时间范围内 ---
+    target_times = np.clip(target_times, original_times[0], original_times[-1])
+
+    # --- 插值 global orientation using Slerp ---
+    global_orient_interp = []
+    for i in range(len(target_times)):
+        t = target_times[i]
+        idx1 = int(np.floor(t * src_fps))
+        idx2 = min(idx1 + 1, num_frames - 1)
+        alpha = t - (idx1 / src_fps)
+
+        rot1 = R.from_rotvec(global_orient[idx1])
+        rot2 = R.from_rotvec(global_orient[idx2])
+        interp_rot = slerp(rot1, rot2, alpha)
+        global_orient_interp.append(interp_rot.as_rotvec())
+    global_orient = np.stack(global_orient_interp, axis=0)
+
+    # Interpolate full body pose using SLERP
+    full_body_pose_interp = []
+    for i in range(full_body_pose.shape[1]):  # For each joint
+        joint_rots = []
+        for j in range(len(target_times)):
+            t = target_times[j]
+            idx1 = int(np.floor(t * src_fps))
             idx2 = min(idx1 + 1, num_frames - 1)
-            alpha = t - idx1
+            alpha = t - (idx1 / src_fps)
 
-            rot1 = R.from_rotvec(global_orient[idx1])
-            rot2 = R.from_rotvec(global_orient[idx2])
+            rot1 = R.from_rotvec(full_body_pose[idx1, i])
+            rot2 = R.from_rotvec(full_body_pose[idx2, i])
             interp_rot = slerp(rot1, rot2, alpha)
-            global_orient_interp.append(interp_rot.as_rotvec())
-        global_orient = np.stack(global_orient_interp, axis=0)
+            joint_rots.append(interp_rot.as_rotvec())
+        full_body_pose_interp.append(np.stack(joint_rots, axis=0))
+    full_body_pose = np.stack(full_body_pose_interp, axis=1)
 
-        # Interpolate full body pose using SLERP
-        full_body_pose_interp = []
-        for i in range(full_body_pose.shape[1]):  # For each joint
-            joint_rots = []
-            for j in range(len(target_time)):
-                t = target_time[j]
-                idx1 = int(np.floor(t))
-                idx2 = min(idx1 + 1, num_frames - 1)
-                alpha = t - idx1
+    # Interpolate joint positions using linear interpolation
+    joints_interp = []
+    for i in range(joints.shape[1]):  # For each joint
+        for j in range(3):  # For each coordinate (x,y,z)
+            interp_func = interp1d(target_times, joints[:, i, j], kind='linear')
+            joints_interp.append(interp_func(target_times))
+    joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-                rot1 = R.from_rotvec(full_body_pose[idx1, i])
-                rot2 = R.from_rotvec(full_body_pose[idx2, i])
-                interp_rot = slerp(rot1, rot2, alpha)
-                joint_rots.append(interp_rot.as_rotvec())
-            full_body_pose_interp.append(np.stack(joint_rots, axis=0))
-        full_body_pose = np.stack(full_body_pose_interp, axis=1)
+    # --- 计算对齐后的 fps ---
+    aligned_fps = float(tgt_fps)
 
-        # Interpolate joint positions using linear interpolation
-        joints_interp = []
-        for i in range(joints.shape[1]):  # For each joint
-            for j in range(3):  # For each coordinate
-                interp_func = interp1d(original_time, joints[:, i, j], kind='linear')
-                joints_interp.append(interp_func(target_time))
-        joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
-
-        aligned_fps = len(global_orient) / num_frames * src_fps
-    else:
-        aligned_fps = tgt_fps
-
+    # --- 构建每帧字典 (position, orientation_quat) ---
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):
         result = {}
@@ -291,10 +486,10 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             if i == 0:
                 rot = R.from_rotvec(single_global_orient)
             else:
-                rot = joint_orientations[parents[i]] * R.from_rotvec(
-                    single_full_body_pose[i].squeeze()
-                )
+                # 父关节的全局旋转乘以本地旋转得到当前关节的全局旋转
+                rot = joint_orientations[parents[i]] * R.from_rotvec(single_full_body_pose[i].squeeze())
             joint_orientations.append(rot)
+            # 转成四元数（scalar_first=True 保持你原代码的顺序）
             result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
 
         smplx_data_frames.append(result)
@@ -303,74 +498,73 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
 
 
 def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
-    """
-    Must return a dictionary with the following structure:
-    {
-        "Hips": (position, orientation),
-        "Spine": (position, orientation),
-        ...
-    }
-    """
-    src_fps = smplx_data["mocap_frame_rate"].item()
-    frame_skip = int(src_fps / tgt_fps)
-    num_frames = smplx_data["pose_body"].shape[0]
+    src_fps = float(smplx_data["mocap_frame_rate"].item())
+    num_frames = int(smplx_data["pose_body"].shape[0])
+
     global_orient = smplx_output.global_orient.squeeze()
     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
     joints = smplx_output.joints.detach().numpy().squeeze()
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
 
-    if tgt_fps < src_fps:
-        # perform fps alignment with proper interpolation
-        new_num_frames = num_frames // frame_skip
+    # 统一用时间轴（秒）来插值
+    duration_seconds = num_frames / src_fps
+    new_num_frames = int(round(duration_seconds * tgt_fps))
 
-        # Create time points for interpolation
-        original_time = np.arange(num_frames)
-        target_time = np.linspace(0, num_frames - 1, new_num_frames)
+    # 原始与目标时间点
+    original_times = np.arange(num_frames) / src_fps
+    target_times = np.arange(new_num_frames) / tgt_fps
 
-        # Interpolate global orientation using SLERP
-        global_orient_interp = []
-        for i in range(len(target_time)):
-            t = target_time[i]
-            idx1 = int(np.floor(t))
+    # 确保 target_times 在原始时间范围内
+    target_times = np.clip(target_times, original_times[0], original_times[-1])
+
+    # 插值 global orientation using Slerp
+    global_orient_interp = []
+    for i in range(len(target_times)):
+        t = target_times[i]
+        idx1 = int(np.floor(t * src_fps))
+        idx2 = min(idx1 + 1, num_frames - 1)
+        alpha = t - (idx1 / src_fps)
+
+        rot1 = R.from_rotvec(global_orient[idx1])
+        rot2 = R.from_rotvec(global_orient[idx2])
+        interp_rot = slerp(rot1, rot2, alpha)
+        global_orient_interp.append(interp_rot.as_rotvec())
+
+    global_orient = np.stack(global_orient_interp, axis=0)
+
+    # 插值 full body pose（每个 joint 的局部旋转） using Slerp per joint
+    full_body_pose_interp = []
+    for i in range(full_body_pose.shape[1]):  # For each joint
+        joint_rots = []
+        for j in range(len(target_times)):
+            t = target_times[j]
+            idx1 = int(np.floor(t * src_fps))
             idx2 = min(idx1 + 1, num_frames - 1)
-            alpha = t - idx1
+            alpha = t - (idx1 / src_fps)
 
-            rot1 = R.from_rotvec(global_orient[idx1])
-            rot2 = R.from_rotvec(global_orient[idx2])
+            rot1 = R.from_rotvec(full_body_pose[idx1, i])
+            rot2 = R.from_rotvec(full_body_pose[idx2, i])
             interp_rot = slerp(rot1, rot2, alpha)
-            global_orient_interp.append(interp_rot.as_rotvec())
-        global_orient = np.stack(global_orient_interp, axis=0)
+            joint_rots.append(interp_rot.as_rotvec())
+        full_body_pose_interp.append(np.stack(joint_rots, axis=0))
 
-        # Interpolate full body pose using SLERP
-        full_body_pose_interp = []
-        for i in range(full_body_pose.shape[1]):  # For each joint
-            joint_rots = []
-            for j in range(len(target_time)):
-                t = target_time[j]
-                idx1 = int(np.floor(t))
-                idx2 = min(idx1 + 1, num_frames - 1)
-                alpha = t - idx1
+    full_body_pose = np.stack(full_body_pose_interp, axis=1)
 
-                rot1 = R.from_rotvec(full_body_pose[idx1, i])
-                rot2 = R.from_rotvec(full_body_pose[idx2, i])
-                interp_rot = slerp(rot1, rot2, alpha)
-                joint_rots.append(interp_rot.as_rotvec())
-            full_body_pose_interp.append(np.stack(joint_rots, axis=0))
-        full_body_pose = np.stack(full_body_pose_interp, axis=1)
+    # 使用 CubicSpline 进行平滑插值
+    joints_interp = []
+    for i in range(joints.shape[1]):  # For each joint
+        for j in range(3):  # For each coordinate (x, y, z)
+            # 使用 CubicSpline 代替线性插值
+            cs = CubicSpline(original_times, joints[:, i, j])
+            joints_interp.append(cs(target_times))
 
-        # Interpolate joint positions using linear interpolation
-        joints_interp = []
-        for i in range(joints.shape[1]):  # For each joint
-            for j in range(3):  # For each coordinate
-                interp_func = interp1d(original_time, joints[:, i, j], kind='linear')
-                joints_interp.append(interp_func(target_time))
-        joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
+    joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-        aligned_fps = len(global_orient) / num_frames * src_fps
-    else:
-        aligned_fps = tgt_fps
+    # 计算对齐后的 fps
+    aligned_fps = float(tgt_fps)
 
+    # 构建每帧字典 (position, orientation_quat)
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):
         result = {}
@@ -382,21 +576,20 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             if i == 0:
                 rot = R.from_rotvec(single_global_orient)
             else:
-                rot = joint_orientations[parents[i]] * R.from_rotvec(
-                    single_full_body_pose[i].squeeze()
-                )
+                rot = joint_orientations[parents[i]] * R.from_rotvec(single_full_body_pose[i].squeeze())
             joint_orientations.append(rot)
             result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
 
         smplx_data_frames.append(result)
 
-    # add correct rotations
+    # 全局坐标系修正
     rotation_matrix = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
     rotation_quat = R.from_matrix(rotation_matrix).as_quat(scalar_first=True)
     for result in smplx_data_frames:
-        for joint_name in result.keys():
-            orientation = utils.quat_mul(rotation_quat, result[joint_name][1])
-            position = result[joint_name][0] @ rotation_matrix.T
+        for joint_name in list(result.keys()):
+            pos, orient_q = result[joint_name]
+            orientation = utils.quat_mul(rotation_quat, orient_q)
+            position = pos @ rotation_matrix.T
             result[joint_name] = (position, orientation)
 
     return smplx_data_frames, aligned_fps

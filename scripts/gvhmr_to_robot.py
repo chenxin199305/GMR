@@ -166,14 +166,17 @@ if __name__ == "__main__":
 
         motion_data = {
             "fps": aligned_fps,
+            "period": len(root_pos) / aligned_fps,
             "root_pos": root_pos,
             "root_rot": root_rot,
             "dof_pos": dof_pos,
             "local_body_pos": local_body_pos,
             "link_body_list": body_names,
         }
+
         with open(args.save_path, "wb") as f:
             pickle.dump(motion_data, f)
+
         print(f"Saved to {args.save_path}")
 
     robot_motion_viewer.close()
