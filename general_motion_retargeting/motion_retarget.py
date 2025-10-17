@@ -234,6 +234,24 @@ class GeneralMotionRetargeting:
         return human_data
 
     def scale_human_data(self, human_data, human_root_name, human_scale_table):
+        """
+        Scales the human data based on the provided scale table and root name.
+
+        This function adjusts the positions of the human body parts in the local frame
+        and then transforms them back to the global frame after scaling. The root position
+        is scaled directly, while other body parts are scaled relative to the root.
+
+        Args:
+            human_data (dict): A dictionary containing the positions and orientations of human body parts.
+                               Each key is a body part name, and the value is a tuple of position (numpy array)
+                               and orientation (quaternion).
+            human_root_name (str): The name of the root body part in the human data.
+            human_scale_table (dict): A dictionary containing scaling factors for each body part.
+
+        Returns:
+            dict: A dictionary containing the scaled positions and orientations of human body parts
+                  in the global frame.
+        """
 
         human_data_local = {}
         root_pos, root_quat = human_data[human_root_name]
