@@ -444,6 +444,7 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
         rot2 = R.from_rotvec(global_orient[idx2])
         interp_rot = slerp(rot1, rot2, alpha)
         global_orient_interp.append(interp_rot.as_rotvec())
+
     global_orient = np.stack(global_orient_interp, axis=0)
 
     # Interpolate full body pose using SLERP
@@ -461,20 +462,25 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             interp_rot = slerp(rot1, rot2, alpha)
             joint_rots.append(interp_rot.as_rotvec())
         full_body_pose_interp.append(np.stack(joint_rots, axis=0))
+
     full_body_pose = np.stack(full_body_pose_interp, axis=1)
 
     # Interpolate joint positions using linear interpolation
     joints_interp = []
     for i in range(joints.shape[1]):  # For each joint
         for j in range(3):  # For each coordinate (x,y,z)
-            interp_func = interp1d(target_times, joints[:, i, j], kind='linear')
+            # 使用 interp1d 进行线性插值
+            # interp_func = interp1d(target_times, joints[:, i, j], kind='linear', fill_value="extrapolate")
+            # 使用 CubicSpline 代替线性插值
+            interp_func = CubicSpline(original_times, joints[:, i, j])
             joints_interp.append(interp_func(target_times))
+
     joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-    # --- 计算对齐后的 fps ---
+    # 计算对齐后的 fps
     aligned_fps = float(tgt_fps)
 
-    # --- 构建每帧字典 (position, orientation_quat) ---
+    # 构建每帧字典 (position, orientation_quat)
     smplx_data_frames = []
     for curr_frame in range(len(global_orient)):
         result = {}
@@ -555,9 +561,11 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     joints_interp = []
     for i in range(joints.shape[1]):  # For each joint
         for j in range(3):  # For each coordinate (x, y, z)
+            # 使用 interp1d 进行线性插值
+            # interp_func = interp1d(target_times, joints[:, i, j], kind='linear', fill_value="extrapolate")
             # 使用 CubicSpline 代替线性插值
-            cs = CubicSpline(original_times, joints[:, i, j])
-            joints_interp.append(cs(target_times))
+            interp_func = CubicSpline(original_times, joints[:, i, j])
+            joints_interp.append(interp_func(target_times))
 
     joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
@@ -576,8 +584,10 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             if i == 0:
                 rot = R.from_rotvec(single_global_orient)
             else:
+                # 父关节的全局旋转乘以本地旋转得到当前关节的全局旋转
                 rot = joint_orientations[parents[i]] * R.from_rotvec(single_full_body_pose[i].squeeze())
             joint_orientations.append(rot)
+            # 转成四元数（scalar_first=True 保持你原代码的顺序）
             result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
 
         smplx_data_frames.append(result)
