@@ -213,7 +213,7 @@ def slerp(rot1, rot2, t):
     return R.from_quat(q)
 
 
-# def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
+# def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, target_fps=30):
 #     """
 #     Must return a dictionary with the following structure:
 #     {
@@ -223,7 +223,7 @@ def slerp(rot1, rot2, t):
 #     }
 #     """
 #     src_fps = smplx_data["mocap_frame_rate"].item()
-#     frame_skip = int(src_fps / tgt_fps)
+#     frame_skip = int(src_fps / target_fps)
 #     num_frames = smplx_data["pose_body"].shape[0]
 #     global_orient = smplx_output.global_orient.squeeze()
 #     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
@@ -231,7 +231,7 @@ def slerp(rot1, rot2, t):
 #     joint_names = JOINT_NAMES[: len(body_model.parents)]
 #     parents = body_model.parents
 #
-#     if tgt_fps < src_fps:
+#     if target_fps < src_fps:
 #         # perform fps alignment with proper interpolation
 #         new_num_frames = num_frames // frame_skip
 #
@@ -280,7 +280,7 @@ def slerp(rot1, rot2, t):
 #
 #         aligned_fps = len(global_orient) / num_frames * src_fps
 #     else:
-#         aligned_fps = tgt_fps
+#         aligned_fps = target_fps
 #
 #     smplx_data_frames = []
 #     for curr_frame in range(len(global_orient)):
@@ -304,7 +304,7 @@ def slerp(rot1, rot2, t):
 #     return smplx_data_frames, aligned_fps
 
 
-# def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30):
+# def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, target_fps=30):
 #     """
 #     Must return a dictionary with the following structure:
 #     {
@@ -314,7 +314,7 @@ def slerp(rot1, rot2, t):
 #     }
 #     """
 #     src_fps = smplx_data["mocap_frame_rate"].item()
-#     frame_skip = int(src_fps / tgt_fps)
+#     frame_skip = int(src_fps / target_fps)
 #     num_frames = smplx_data["pose_body"].shape[0]
 #     global_orient = smplx_output.global_orient.squeeze()
 #     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
@@ -322,7 +322,7 @@ def slerp(rot1, rot2, t):
 #     joint_names = JOINT_NAMES[: len(body_model.parents)]
 #     parents = body_model.parents
 #
-#     if tgt_fps < src_fps:
+#     if target_fps < src_fps:
 #         # perform fps alignment with proper interpolation
 #         new_num_frames = num_frames // frame_skip
 #
@@ -371,7 +371,7 @@ def slerp(rot1, rot2, t):
 #
 #         aligned_fps = len(global_orient) / num_frames * src_fps
 #     else:
-#         aligned_fps = tgt_fps
+#         aligned_fps = target_fps
 #
 #     smplx_data_frames = []
 #     for curr_frame in range(len(global_orient)):
@@ -415,9 +415,9 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     src_fps = smplx_data["mocap_frame_rate"].item()
     num_frames = smplx_data["pose_body"].shape[0]
 
-    global_orient = smplx_output.global_orient.squeeze()
+    global_orient = smplx_output.global_orient.reshape(num_frames, 3)
     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
-    joints = smplx_output.joints.detach().numpy().squeeze()
+    joints = smplx_output.joints.detach().numpy().reshape(num_frames, -1, 3)
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
 
@@ -432,7 +432,46 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     # --- 确保 target_times 在原始时间范围内 ---
     target_times = np.clip(target_times, original_times[0], original_times[-1])
 
-    # --- 插值 global orientation using Slerp ---
+    # 计算对齐后的 fps
+    aligned_fps = float(tgt_fps)
+
+    # --------------------------------------------------
+
+    # 特殊情况处理：如果 new_num_frames 为0，则至少保留一帧（直接复制第一帧）
+    if new_num_frames == 0:
+        smplx_data_frames = []
+
+        result = {}
+        single_global_orient = global_orient[0]
+        single_full_body_pose = full_body_pose[0]
+        single_joints = joints[0]
+        joint_orientations = []
+
+        # print(
+        #     f"global_orient.shape = {global_orient.shape}\n"
+        #     f"full_body_pose.shape = {full_body_pose.shape}\n"
+        #     f"joints.shape = {joints.shape}\n"
+        #
+        #     f"single_global_orient = {single_global_orient}\n"
+        #     f"single_full_body_pose = {single_full_body_pose}\n"
+        #     f"single_joints = {single_joints}\n"
+        # )
+
+        for i, joint_name in enumerate(joint_names):
+            if i == 0:
+                rot = R.from_rotvec(single_global_orient)
+            else:
+                rot = joint_orientations[parents[i]] * R.from_rotvec(single_full_body_pose[i].squeeze())
+            joint_orientations.append(rot)
+            # 转成四元数（scalar_first=True 保持你原代码的顺序）
+            result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
+
+        smplx_data_frames.append(result)
+        return smplx_data_frames, aligned_fps
+
+    # --------------------------------------------------
+
+    # Interpolate global orientation using Slerp
     global_orient_interp = []
     for i in range(len(target_times)):
         t = target_times[i]
@@ -445,7 +484,7 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
         interp_rot = slerp(rot1, rot2, alpha)
         global_orient_interp.append(interp_rot.as_rotvec())
 
-    global_orient = np.stack(global_orient_interp, axis=0)
+    global_orient = np.stack(global_orient_interp, axis=0).reshape(new_num_frames, 3)
 
     # Interpolate full body pose using SLERP
     full_body_pose_interp = []
@@ -463,7 +502,7 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             joint_rots.append(interp_rot.as_rotvec())
         full_body_pose_interp.append(np.stack(joint_rots, axis=0))
 
-    full_body_pose = np.stack(full_body_pose_interp, axis=1)
+    full_body_pose = np.stack(full_body_pose_interp, axis=1).reshape(new_num_frames, -1, 3)
 
     # Interpolate joint positions using linear interpolation
     joints_interp = []
@@ -477,8 +516,7 @@ def get_smplx_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
 
     joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-    # 计算对齐后的 fps
-    aligned_fps = float(tgt_fps)
+    # --------------------------------------------------
 
     # 构建每帧字典 (position, orientation_quat)
     smplx_data_frames = []
@@ -507,9 +545,9 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     src_fps = float(smplx_data["mocap_frame_rate"].item())
     num_frames = int(smplx_data["pose_body"].shape[0])
 
-    global_orient = smplx_output.global_orient.squeeze()
+    global_orient = smplx_output.global_orient.reshape(num_frames, 3)
     full_body_pose = smplx_output.full_pose.reshape(num_frames, -1, 3)
-    joints = smplx_output.joints.detach().numpy().squeeze()
+    joints = smplx_output.joints.detach().numpy().reshape(num_frames, -1, 3)
     joint_names = JOINT_NAMES[: len(body_model.parents)]
     parents = body_model.parents
 
@@ -524,6 +562,45 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
     # 确保 target_times 在原始时间范围内
     target_times = np.clip(target_times, original_times[0], original_times[-1])
 
+    # 计算对齐后的 fps
+    aligned_fps = float(tgt_fps)
+
+    # --------------------------------------------------
+
+    # 特殊情况处理：如果 new_num_frames 为0，则至少保留一帧（直接复制第一帧）
+    if new_num_frames == 0:
+        smplx_data_frames = []
+
+        result = {}
+        single_global_orient = global_orient[0]
+        single_full_body_pose = full_body_pose[0]
+        single_joints = joints[0]
+        joint_orientations = []
+
+        # print(
+        #     f"global_orient.shape = {global_orient.shape}\n"
+        #     f"full_body_pose.shape = {full_body_pose.shape}\n"
+        #     f"joints.shape = {joints.shape}\n"
+        #
+        #     f"single_global_orient = {single_global_orient}\n"
+        #     f"single_full_body_pose = {single_full_body_pose}\n"
+        #     f"single_joints = {single_joints}\n"
+        # )
+
+        for i, joint_name in enumerate(joint_names):
+            if i == 0:
+                rot = R.from_rotvec(single_global_orient)
+            else:
+                rot = joint_orientations[parents[i]] * R.from_rotvec(single_full_body_pose[i].squeeze())
+            joint_orientations.append(rot)
+            # 转成四元数（scalar_first=True 保持你原代码的顺序）
+            result[joint_name] = (single_joints[i], rot.as_quat(scalar_first=True))
+
+        smplx_data_frames.append(result)
+        return smplx_data_frames, aligned_fps
+
+    # --------------------------------------------------
+
     # 插值 global orientation using Slerp
     global_orient_interp = []
     for i in range(len(target_times)):
@@ -537,7 +614,7 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
         interp_rot = slerp(rot1, rot2, alpha)
         global_orient_interp.append(interp_rot.as_rotvec())
 
-    global_orient = np.stack(global_orient_interp, axis=0)
+    global_orient = np.stack(global_orient_interp, axis=0).reshape(new_num_frames, 3)
 
     # 插值 full body pose（每个 joint 的局部旋转） using Slerp per joint
     full_body_pose_interp = []
@@ -555,7 +632,7 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
             joint_rots.append(interp_rot.as_rotvec())
         full_body_pose_interp.append(np.stack(joint_rots, axis=0))
 
-    full_body_pose = np.stack(full_body_pose_interp, axis=1)
+    full_body_pose = np.stack(full_body_pose_interp, axis=1).reshape(new_num_frames, -1, 3)
 
     # 使用 CubicSpline 进行平滑插值
     joints_interp = []
@@ -569,8 +646,7 @@ def get_gvhmr_data_offline_fast(smplx_data, body_model, smplx_output, tgt_fps=30
 
     joints = np.stack(joints_interp, axis=1).reshape(new_num_frames, -1, 3)
 
-    # 计算对齐后的 fps
-    aligned_fps = float(tgt_fps)
+    # --------------------------------------------------
 
     # 构建每帧字典 (position, orientation_quat)
     smplx_data_frames = []
